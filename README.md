@@ -217,6 +217,60 @@ This reads `schema_graph.graphml` and draws it with NetworkX. You'll need to exp
 - The LLM occasionally hallucinates column names on unfamiliar schemas. The validator catches the obvious cases but not subtle typos that happen to reference real columns.
 - FAISS is loaded per request, which works fine for single-user demos but won't scale horizontally without an external vector store.
 
+## Docker
+
+The project ships with a multi-stage Dockerfile and a docker-compose setup. The image is based on `python:3.12-slim`, installs dependencies with `uv` (matching `uv.lock`), and pre-downloads the `intfloat/multilingual-e5-base` embedding model during build so the first request isn't slow.
+
+### Quick start
+
+```bash
+# 1. Copy and fill in environment variables
+cp .env.example .env
+# then edit .env and set SECRET_KEY to something long and random
+
+# 2. Build and run
+docker compose up -d --build
+
+# 3. Check logs
+docker compose logs -f app
+
+# 4. Open the docs
+# http://localhost:8000/docs
+```
+
+The API will be available at `http://localhost:8000`. SQLite data and uploaded user databases are stored in the named volume `schemamind-data`; the HuggingFace model cache lives in `schemamind-cache`. Both survive container restarts.
+
+### Development mode
+
+A separate compose file mounts the source as a volume and runs `uvicorn --reload`:
+
+```bash
+docker compose -f docker-compose.dev.yml --profile dev up --build
+```
+
+### Useful commands
+
+```bash
+# Stop
+docker compose down
+
+# Stop and remove volumes (wipes all data!)
+docker compose down -v
+
+# Rebuild after changing pyproject.toml or uv.lock
+docker compose build --no-cache
+
+# Open a shell inside the container
+docker compose exec app bash
+
+# Tail logs
+docker compose logs -f --tail=100 app
+```
+
+### Build arguments
+
+The default Dockerfile doesn't expose any build args — the embedding model is downloaded at build time via `sentence-transformers` and cached in the image. If you want to bake a Google API key into the image (not recommended for production), pass it as an env var in `docker-compose.yml`.
+
 ## License
 
 MIT.
