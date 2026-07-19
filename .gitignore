@@ -19,3 +19,10 @@ data/
 
 # Old scripts
 old_scripts/
+
+# Frontend
+node_modules/
+.vite/
+
+# Source fonts (already vendored into frontend/public/fonts)
+/fonts

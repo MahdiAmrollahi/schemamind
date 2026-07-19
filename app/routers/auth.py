@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password, verify_password, create_token
+from app.auth import get_current_user, hash_password, verify_password, create_token
 from app.database import User, get_db
 from app.schemas import UserCreate, UserResponse, Token, ErrorResponse
 
@@ -43,3 +43,19 @@ def login(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(401, "Invalid username or password")
     token = create_token(row.id, row.username)
     return Token(access_token=token)
+
+
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Current user",
+    description="Return the currently authenticated user's profile.",
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing token"},
+    },
+)
+def me(user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = db.query(User).filter(User.id == user["id"]).first()
+    if not row:
+        raise HTTPException(401, "User not found")
+    return UserResponse(id=row.id, username=row.username, created_at=str(row.created_at))

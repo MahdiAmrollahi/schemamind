@@ -62,34 +62,65 @@ There's also a small visualization helper (`main.py`) that draws the schema grap
 
 ```
 mlops_project/
-├── app/
+├── app/                     # FastAPI backend
 │   ├── main.py              # FastAPI app + lifespan
 │   ├── config.py            # Env vars and model list
 │   ├── database.py          # SQLAlchemy models (User, UserDatabase)
 │   ├── auth.py              # JWT + password hashing
 │   ├── schemas.py           # Pydantic request/response models
 │   ├── routers/
-│   │   ├── auth.py          # /api/auth/register, /login
+│   │   ├── auth.py          # /api/auth/register, /login, /me
 │   │   ├── settings.py      # /api/settings/api-key
 │   │   ├── databases.py     # /api/databases upload/list/delete
 │   │   ├── models.py        # /api/models list Gemini models
 │   │   └── query.py         # /api/query NL → SQL → results
 │   └── services/
-│       ├── schema_extractor.py  # Pulls tables/keys/FKs from SQLite
-│       ├── vectorizer.py        # sentence-transformers + FAISS
-│       ├── retriever.py         # top-p retrieval + graph expansion
-│       ├── sql_generator.py     # Gemini call + prompt
-│       ├── sql_validator.py     # Safety checks
-│       ├── sql_executor.py      # Runs validated SELECT
-│       └── model_lister.py      # Fetches live Gemini model list
+│       ├── schema_extractor.py
+│       ├── vectorizer.py
+│       ├── retriever.py
+│       ├── sql_generator.py
+│       ├── sql_validator.py
+│       ├── sql_executor.py
+│       └── model_lister.py
+├── frontend/                # React + Vite + Tailwind (RTL, Persian)
+│   ├── src/
+│   │   ├── pages/           # Login, Register, Dashboard, Databases, Query, Settings
+│   │   ├── components/      # AppLayout, Card, DataTable, Button, Input, …
+│   │   ├── context/         # AuthContext
+│   │   └── lib/             # api wrapper
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   ├── tailwind.config.js
+│   └── vite.config.ts
 ├── main.py                  # Standalone schema graph visualizer
 ├── pyproject.toml
+├── docker-compose.yml       # api + frontend
+├── docker-compose.dev.yml   # dev with hot-reload
+├── Dockerfile               # API image
 └── .env                     # SECRET_KEY, GOOGLE_API_KEY
 ```
 
 ## Getting started
 
-### 1. Clone and set up
+You can run SchemaMind in three ways: with Docker (full stack), the backend alone, or both backend and frontend in dev mode.
+
+### Option A — Docker (recommended)
+
+```bash
+cp .env.example .env
+# edit .env and set SECRET_KEY
+
+docker compose up -d --build
+```
+
+Once it's up:
+
+- Frontend (UI): http://localhost:8080
+- API docs: http://localhost:8080/docs (proxied through nginx) or http://localhost:8000/docs
+- Database: stored in the `schemamind-data` volume
+
+### Option B — Backend only
 
 ```bash
 git clone <repo-url>
@@ -99,26 +130,26 @@ python -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 
 pip install -e .
-```
 
-### 2. Configure environment
-
-Create a `.env` file:
-
-```env
-SECRET_KEY=your-long-random-string
-GOOGLE_API_KEY=your-google-ai-studio-key
-```
-
-### 3. Run the API
-
-```bash
+cp .env.example .env          # then edit SECRET_KEY
 uvicorn app.main:app --reload
 ```
 
-The interactive docs live at `http://localhost:8000/docs`.
+The interactive API docs live at `http://localhost:8000/docs`.
 
-### 4. Try it end-to-end
+### Option C — Frontend dev server (Vite + HMR)
+
+With the backend running, in another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite serves the UI on `http://localhost:5173` and proxies `/api/*` to the backend on `http://localhost:8000`.
+
+### Try the API end-to-end (curl)
 
 ```bash
 # Register
