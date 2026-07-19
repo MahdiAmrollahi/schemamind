@@ -1,15 +1,29 @@
 import os
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, create_engine
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from app.config import APP_DB_PATH, DATABASES_DIR
 
 engine = create_engine(
     f"sqlite:///{APP_DB_PATH}",
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False, "timeout": 30},
 )
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, _connection_record):
+    """Enable WAL mode and a sane busy timeout so concurrent writes wait instead of failing."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -52,6 +66,7 @@ def get_db():
 
 
 def init_db():
-    os.makedirs("data", exist_ok=True)
+    db_dir = os.path.dirname(APP_DB_PATH) or "data"
+    os.makedirs(db_dir, exist_ok=True)
     os.makedirs(DATABASES_DIR, exist_ok=True)
     Base.metadata.create_all(bind=engine)

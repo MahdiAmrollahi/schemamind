@@ -54,7 +54,8 @@ def add_database(
         db_path="", schema_path="", index_path="",
     )
     db.add(record)
-    db.flush()
+    db.commit()
+    db.refresh(record)
     db_id = record.id
 
     db_dir = os.path.join(DATABASES_DIR, str(db_id))
