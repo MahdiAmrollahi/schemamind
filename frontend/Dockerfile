@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-# ---------- Stage 1: build ----------
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -11,7 +9,6 @@ COPY . .
 RUN npm run build
 
 
-# ---------- Stage 2: serve with nginx ----------
 FROM nginx:1.27-alpine AS runtime
 
 RUN rm -rf /usr/share/nginx/html/*
