@@ -1,10 +1,17 @@
 import json
 import re
+import time
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from app.metrics import (
+    AGENT_REQUEST_DURATION,
+    AGENT_REQUESTS_TOTAL,
+    AGENT_SQL_VALID_TOTAL,
+    AGENT_TOKENS_TOTAL,
+)
 from app.services.retriever import retrieve
 from app.services.sql_validator import validate_sql
 
@@ -51,18 +58,41 @@ def _extract_sql(content) -> str:
     return match.group(1).strip() if match else content.strip()
 
 
+def _record_tokens(model: str, response) -> None:
+    usage = (getattr(response, "usage_metadata", None)
+             or (getattr(response, "response_metadata", None) or {}).get("usage_metadata")
+             or {})
+    prompt = usage.get("input_token_count") or usage.get("prompt_token_count") or 0
+    completion = usage.get("output_token_count") or usage.get("candidates_token_count") or 0
+    if prompt:
+        AGENT_TOKENS_TOTAL.labels(model=model, kind="prompt").inc(prompt)
+    if completion:
+        AGENT_TOKENS_TOTAL.labels(model=model, kind="completion").inc(completion)
+
+
 def generate_sql(question: str, schema_path: str, index_path: str, model: str, api_key: str) -> dict:
     retrieval = retrieve(question, schema_path, index_path, top_p=0.9, temperature=0.1)
     schema_context = _format_schema(retrieval, schema_path)
 
     llm = ChatGoogleGenerativeAI(model=model, temperature=0, google_api_key=api_key)
-    response = llm.invoke([
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=f"Schema:\n{schema_context}\n\nQuestion: {question}"),
-    ])
+    start = time.perf_counter()
+    status = "ok"
+    try:
+        response = llm.invoke([
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=f"Schema:\n{schema_context}\n\nQuestion: {question}"),
+        ])
+        _record_tokens(model, response)
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        AGENT_REQUEST_DURATION.labels(model=model).observe(time.perf_counter() - start)
+        AGENT_REQUESTS_TOTAL.labels(model=model, status=status).inc()
 
     sql = _extract_sql(response.content)
     ok, msg = validate_sql(sql)
+    AGENT_SQL_VALID_TOTAL.labels(valid=str(ok).lower(), reason=msg).inc()
 
     return {
         "sql": sql,

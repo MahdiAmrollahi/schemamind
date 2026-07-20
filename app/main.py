@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.database import init_db
 from app.routers import auth, databases, models, query, settings
@@ -58,6 +59,11 @@ app.include_router(settings.router)
 app.include_router(databases.router)
 app.include_router(models.router)
 app.include_router(query.router)
+
+Instrumentator(
+    should_group_status_codes=False,
+    excluded_handlers=["/metrics", "/"],
+).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 @app.get("/", tags=["health"], summary="Health check")

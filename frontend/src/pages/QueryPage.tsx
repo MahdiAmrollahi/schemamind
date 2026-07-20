@@ -5,7 +5,7 @@ import { Card, EmptyState } from '../components/Card'
 import { Field, Select, Textarea } from '../components/Input'
 import { Button } from '../components/Button'
 import { Spinner } from '../components/Toast'
-import { DataTable } from '../components/DataTable'
+import { ResultTable } from '../components/ResultTable'
 
 interface DatabaseItem { id: number; name: string }
 interface ModelItem { id: string; name: string }
@@ -112,16 +112,6 @@ export function QueryPage() {
     )
   }
 
-  const columns = response?.results?.columns.map(c => ({
-    key: c,
-    header: c,
-    render: (row: any[]) => {
-      const v = row[response.results!.columns.indexOf(c)]
-      if (v === null || v === undefined) return <span className="text-slate-400">—</span>
-      return <span className="font-mono text-xs">{String(v)}</span>
-    },
-  })) || []
-
   return (
     <div>
       <PageHeader title="پرس‌وجو" description="سوال خود را به فارسی یا انگلیسی بنویسید. SQL تولیدشده و نتایج واقعی نمایش داده می‌شود." />
@@ -175,15 +165,12 @@ export function QueryPage() {
           </div>
 
           {response.results && response.results.columns.length > 0 ? (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-medium text-slate-500">ردیف‌ها</div>
-                <div className="text-xs text-slate-500">
-                  {response.results.row_count.toLocaleString('fa-IR')} ردیف (حداکثر ۱۰۰)
-                </div>
-              </div>
-              <DataTable rows={response.results.rows} columns={columns} />
-            </div>
+            <ResultTable
+              columns={response.results.columns}
+              rows={response.results.rows}
+              totalRowCount={response.results.row_count}
+              maxRows={100}
+            />
           ) : (
             <div className="text-sm text-slate-500">بدون ردیف.</div>
           )}

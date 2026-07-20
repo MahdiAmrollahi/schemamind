@@ -1,4 +1,5 @@
 import json
+import time
 from collections import deque
 from pathlib import Path
 
@@ -6,6 +7,12 @@ import faiss
 import networkx as nx
 import numpy as np
 
+from app.metrics import (
+    RAG_RETRIEVALS_TOTAL,
+    RAG_RETRIEVAL_DURATION,
+    RAG_SEED_TABLES,
+    RAG_TOTAL_TABLES,
+)
 from app.services.vectorizer import _get_model, _table_doc
 
 MODEL_NAME = "intfloat/multilingual-e5-base"
@@ -52,34 +59,42 @@ def _connecting_tables(seeds: set, relationships: list) -> set:
 
 def retrieve(query: str, schema_path: str, index_path: str,
              top_p: float = 0.9, temperature: float = 0.1) -> dict:
-    model = _get_model()
-    schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
-    table_names = [t["name"] for t in schema["tables"]]
+    RAG_RETRIEVALS_TOTAL.inc()
+    start = time.perf_counter()
+    try:
+        model = _get_model()
+        schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
+        table_names = [t["name"] for t in schema["tables"]]
 
-    q_vec = model.encode(
-        ["query: " + query], normalize_embeddings=True, convert_to_numpy=True
-    ).astype("float32")
+        q_vec = model.encode(
+            ["query: " + query], normalize_embeddings=True, convert_to_numpy=True
+        ).astype("float32")
 
-    index = faiss.read_index(index_path)
-    scores, ids = index.search(q_vec, index.ntotal)
+        index = faiss.read_index(index_path)
+        scores, ids = index.search(q_vec, index.ntotal)
 
-    pairs = [(float(s), table_names[i]) for s, i in zip(scores[0], ids[0]) if i >= 0]
-    if not pairs:
-        return {"query": query, "tables": [], "seed_tables": [], "relationships": []}
+        pairs = [(float(s), table_names[i]) for s, i in zip(scores[0], ids[0]) if i >= 0]
+        if not pairs:
+            return {"query": query, "tables": [], "seed_tables": [], "relationships": []}
 
-    sims = np.array([s for s, _ in pairs], dtype=np.float32)
-    k = _topp(sims, top_p=top_p, temperature=temperature)
-    chosen = [t for _, t in pairs[:k]]
+        sims = np.array([s for s, _ in pairs], dtype=np.float32)
+        k = _topp(sims, top_p=top_p, temperature=temperature)
+        chosen = [t for _, t in pairs[:k]]
 
-    final = _connecting_tables(set(chosen), schema["relationships"])
-    rels = [r for r in schema["relationships"]
-            if r["from_table"] in final and r["to_table"] in final]
-    tables = [t["name"] for t in schema["tables"] if t["name"] in final]
+        final = _connecting_tables(set(chosen), schema["relationships"])
+        rels = [r for r in schema["relationships"]
+                if r["from_table"] in final and r["to_table"] in final]
+        tables = [t["name"] for t in schema["tables"] if t["name"] in final]
 
-    return {
-        "query": query,
-        "k": k,
-        "seed_tables": chosen,
-        "tables": tables,
-        "relationships": rels,
-    }
+        result = {
+            "query": query,
+            "k": k,
+            "seed_tables": chosen,
+            "tables": tables,
+            "relationships": rels,
+        }
+        RAG_SEED_TABLES.observe(len(chosen))
+        RAG_TOTAL_TABLES.observe(len(tables))
+        return result
+    finally:
+        RAG_RETRIEVAL_DURATION.observe(time.perf_counter() - start)
